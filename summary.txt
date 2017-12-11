@@ -1,0 +1,50 @@
+This summary is about all the details based on the requirements in the rubric.
+
++++++++++++++
++ The Model +
++++++++++++++
+Student describes their model in detail. This includes the state, actuators and update equations. 
+
+The model can be summarized as that, given the current vehicle state, and motion model, try to predict its states after each time step for a total of N steps, which is a function of the current state and the actuators applied at each step,  with the goal of optimizing/minimizing the errors, such as the cross track error and velocity orientation error, so that the vehicle can run on the track safely and fast.
+
+The vehicle’s state includes 6 variables: 
+x - x coordinate
+y - y coordinate
+v - vehicle's speed
+psi - vehicle’s current orientation
+cte - the cross track error, which represents the different between the current position and the reference/expected position
+epsi - the difference between the current orientation and the expected/desired orientation
+
+There are two input actuators, the steering angle delta, and the acceleration/deceleration a. 
+
+The next state can be calculated based on the current state and the actuators’ input:
+x1 = x + v * cos(psi) * dt
+y1 = y + v * sin(psi) * dt
+v1 = v + a * dt
+psi1 = psi - v * dt * delta / Lf //Lf is a constant, a physical characteristic of the vehicle
+cte1 = y1 - f(x1) // f(x) is the polynomial fitted for the reference trajectory
+epsi1 = psi1 - atan(f’(x1)) // f’(x1) gives the slope of the reference trajectory at x1, while atan(f’(x1)) is the desired orientation at x1.
+
+++++++++++++++++++++++++++++++++++++++++++++++++++
++ Time step Length and Elapsed Duration (N & dt) +
+++++++++++++++++++++++++++++++++++++++++++++++++++
+Student discusses the reasoning behind the chosen N (timestep length) and dt (elapsed duration between timesteps) values. Additionally the student details the previous values tried.
+
+While many different N and dt combinations may work, but my understanding is that, dt is the time step used in the model to predict the next state. In theory, the smaller it is, the closer the predicted state approaches the actual state, since we are simulating a continuous problem in a discrete way. But, because of the execution delay (0.1s in this case) of the actuators, I think it doesn’t make much sense to use a smaller dt than 0.1. If we did that, e.g. we use 0.01, the next actuator output would be based on  the assumption that, after another 0.01s, we would have another actuator output, which is not the fact. So I just used 0.1 for dt in my implementation. Though I found that other smaller values may still work, especially in low speed, but I think 0.1 makes the most sense. For N, I used 6. The reason to choose 6 here, is that it gives enough steps to optimize the current output while using long enough prediction into the future. The bigger N is, the longer prediction the model does, which also means more potential inaccuracy. Think of the reference trajectory, which is a fitted polynomial based on the given waypoints. If the predicted trajectory is even longer than the reference trajectory, it’s obviously not good. But N can’t be too small. That way, we would lose the benefits of predictive control. Actually, this parameter should also be chosen based on the speed. The higher the speed is, the farthest the prediction goes. I chose 6 here based on my highest speed, about 70 in my implementation. Actually, maybe we can choose different parameters for different speed ranges. 
+
+++++++++++++++++++++++++++++++++++++++++++++
++ Polynomial Fitting and MPC Preprocessing +
+++++++++++++++++++++++++++++++++++++++++++++
+A polynomial is fitted to waypoints. If the student preprocesses waypoints, the vehicle state, and/or actuators prior to the MPC procedure it is described.
+
+Polynomial fitting is not as simple as it seems to be. At the beginning, I used the waypoints to fit the polynomial in the map’s coordinate system, and the result was that the car always ran off road after just a small distance from the starting point. It did take me a lot of time to figure out why. One reason I found out is that in this case, atan may not give the correct angle because atan can only give results between (-Pi, Pi). But even I made adjustments for this, it still didn’t work. The cross track error varies suddenly at some waypoints. I realized the fitted polynomial may not be accurate enough. I also found that the reference trajectory was almost vertical, even with the waypoint x values first become bigger then smaller.  I realized that the 3-order polynomial can’t fit such trajectory accurately. To use another coordinate system, the car’s coordinate, is a perfect choice in this case. It was so good after I did this. I first convert the current state into the car’s coordinate system and after that, all calculation happens there. The formula to do this transformation is as below(x’, y’ are the coordinates in the car’s coordinate system, and x, y are the coordinates in the map’s coordinate system; px, py are the car’s current position in the map’s coordinate system):
+x’ = (x - px) * cos(psi) + (y - py) * sin(psi)
+y’ =  -(x - px) * sin(psi) + (y - py) * cos(psi)
+After this transformation, x', y' and psi' of the current state are all 0s, v remains unchanged, and calculation of cte and epsi are the same as before.
+
++++++++++++++++++++++++++++++++++++++++++
++ Model Predictive Control with Latency +
++++++++++++++++++++++++++++++++++++++++++
+The student implements Model Predictive Control that handles a 100 millisecond latency. Student provides details on how they deal with latency.
+
+Model predictive Control provides easy way to take the latency into consideration. Latency means that the control output would be applied to a later state, which means that the control calculation should also be based on that state. Similar to prediction of the state of the next time step, just set dt as 100ms, new state can be calculated and acts as the start point for MPC.
